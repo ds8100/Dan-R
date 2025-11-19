@@ -1,0 +1,123 @@
+---
+author: "Dan Schiefen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      #warning = F,
+                      #message = F,
+                      fig.align = 'center')
+
+pacman::p_load(tidyverse, class, mlbench)
+
+```
+
+```{r knn_search_function}
+# Normalize Function
+normalize <- function(x){return((x - min(x)) / (max(x) - min(x)))}
+
+# Tunes the value of $k$ for kNN classification for any data set given to it. 
+# Perform a grid search across k for k-nearest neighbors classification when the data are both standardize and normalize.
+knn_search <- 
+  function(X, class, k_grid) {
+    # X = the data set of predictors
+    # class = the class/category for rows of X
+    # k_grid = the different values of $k$ to search over
+    
+    #Create normalized dataset
+    X_norm <- 
+      X |> 
+      dplyr::select(where(is.numeric)) |> 
+      mutate(
+        across(
+          .cols = where(is.numeric),
+          .fns = normalize
+          )
+        )
+      
+    #Create standardized dataset
+    X_stan <- 
+      X |> 
+      dplyr::select(where(is.numeric)) |> 
+      mutate(
+        across(
+          .cols = where(is.numeric),
+          .fns = scale
+          )
+        )
+    
+    #Initialize data table
+    k_error <- 
+      data.frame(
+        k = k_grid,
+        norm = -1,
+        stan = -1)
+    
+    for (i in 1:nrow(k_error)) {
+      #perform kNN for the ith choice of K on the normalized data set
+      norm_loop <- 
+        knn.cv(
+          train = X_norm,
+          cl = class,
+          k = k_grid[i]
+          )
+      
+      #perform kNN for the ith choice of K on the standardized data set
+      stan_loop <- 
+        knn.cv(
+          train = X_stan,
+          cl = class,
+          k = k_grid[i]
+          )
+      
+      #Save to table
+      k_error$norm[i] <- mean(norm_loop != class)
+      k_error$stan[i] <- mean(stan_loop != class)
+    }
+    
+    #pivot data to put rescale into same column
+    k_error <- 
+      k_error |> 
+      pivot_longer(
+        cols = -k,
+        names_to = "rescale",
+        values_to = "error"
+      )
+
+    
+    #Finding the k value(s) which minimize error
+    min_k <- 
+      k_error |> 
+      slice_min(
+        order_by = error, 
+        n = 1
+        )
+    
+    # creating graph gg_serch
+    # x = k, y = error, color = rescale
+    # a dashed line at the value of `k` that minimizes the error rate with color that matches the rescale method
+
+    gg_search <-
+      ggplot(
+        data = k_error,
+        mapping = aes(x = k,
+                      y = error,
+                      color = rescale)
+        ) +
+      geom_line() +
+      geom_vline(
+        data = min_k,
+        mapping = aes(
+          xintercept = k,
+          color = rescale),
+        linetype = 2,
+        show.legend = F
+      ) +
+      theme_bw()
+    
+    return(list(k_error = k_error, gg_search = gg_search))
+}
+
+```
